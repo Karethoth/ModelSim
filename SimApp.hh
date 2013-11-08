@@ -11,9 +11,12 @@
 
 #include "SimState.hh"
 #include "SimGUI.hh"
+#include "SimCamera.hh"
+#include "TerrainLoader.hh"
 
 #include <stack>
 #include <memory>
+#include <curl/curl.h>
 
 
 /* SimApp class holds the general
@@ -21,6 +24,7 @@
 class SimApp : public Ogre::WindowEventListener
 {
   public:
+	SimApp();
 	~SimApp();
 
 	void Init();
@@ -57,9 +61,16 @@ class SimApp : public Ogre::WindowEventListener
 	OIS::Mouse        *mouse;
 	OIS::Keyboard     *keyboard;
 
+	// Camera
+	SimCamera *camera;
+
+	// Networking
+	CURL *curl;
+
   // Friend classes:
   friend SimGUI;
   friend SimState;
+  friend TerrainLoader;
 };
 
 #endif

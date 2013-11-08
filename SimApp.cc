@@ -2,6 +2,15 @@
 
 #include <exception>
 
+using std::cout;
+using std::string;
+
+
+SimApp::SimApp()
+{
+	gui = nullptr;
+	curl = nullptr;
+}
 
 SimApp::~SimApp()
 {
@@ -14,6 +23,13 @@ void SimApp::Init()
 	try
 	{
 		closed = false;
+
+		// Initialize curl
+		curl = curl_easy_init();
+		if( !curl )
+		{
+			throw std::exception( "Fatal error: CURL could not be initialized!\n" );
+		}
 
 		// Create Ogre root
 		Ogre::String ogreConfigFile = "ogre.cfg";
@@ -82,26 +98,12 @@ void SimApp::Init()
 		Ogre::SceneNode* rootNode = sceneManager->getRootSceneNode();
 
 		// Create camera
-		Ogre::Camera* camera = sceneManager->createCamera( "MainCamera" );
+		/*Ogre::Camera* camera = sceneManager->createCamera( "MainCamera" );
 		Ogre::SceneNode* cameraNode = rootNode->createChildSceneNode( "MainCameraNode" );
-		cameraNode->attachObject( camera );
+		cameraNode->attachObject( camera );*/
+		camera = new SimCamera( sceneManager );
 
 		
-		// Load meshes
-		Ogre::String lNameOfTheMesh = "test.mesh";
-		int lNumberOfEntities = 5;
-		for( int iter = 0; iter < lNumberOfEntities; ++iter )
-		{
-			Ogre::Entity* lEntity = sceneManager->createEntity( lNameOfTheMesh );
-			// Now I attach it to a scenenode, so that it becomes present in the scene.
-			Ogre::SceneNode* lNode = rootNode->createChildSceneNode();
-			lNode->attachObject(lEntity);
-			// I move the SceneNode so that it is visible to the camera.
-			float lPositionOffset = float(1+ iter * 2) - (float(lNumberOfEntities));
-			lPositionOffset = lPositionOffset * 20;
-			lNode->translate( lPositionOffset, lPositionOffset, -200.0f );
-			// The loaded mesh will be white. This is normal.
-		}
 
 		// Create viewport
 		float lViewportWidth = 1.0f;
@@ -110,14 +112,14 @@ void SimApp::Init()
 		float lViewportTop = (1.0f - lViewportHeight) * 0.5f;
 		unsigned short lMainViewpointZOrder = 100;
 
-		Ogre::Viewport* vp = mainWindow->addViewport( camera, lMainViewpointZOrder, lViewportLeft,
+		Ogre::Viewport* vp = mainWindow->addViewport( camera->GetCamera(), lMainViewpointZOrder, lViewportLeft,
 			                                          lViewportTop, lViewportWidth, lViewportHeight );
 		vp->setAutoUpdated( true );
 		vp->setBackgroundColour( Ogre::ColourValue( 0.1f, 0.1f, 0.1f ) );
 		float ratio = float( vp->getActualWidth() ) / float( vp->getActualHeight() );
-		camera->setAspectRatio( ratio );
-		camera->setNearClipDistance( 1.5 );
-		camera->setFarClipDistance( 3000.0 );
+		camera->GetCamera()->setAspectRatio( ratio );
+		camera->GetCamera()->setNearClipDistance( 1.5 );
+		camera->GetCamera()->setFarClipDistance( 6000.0 );
 
 		mainWindow->setActive( true );
 		mainWindow->setAutoUpdated( false );
@@ -145,17 +147,65 @@ void SimApp::Init()
 		#endif
 
 		inputManager = OIS::InputManager::createInputSystem( pl );
-		mouse = static_cast<OIS::Mouse*>(inputManager->createInputObject( OIS::OISMouse, true ));
-		keyboard = static_cast<OIS::Keyboard*>(inputManager->createInputObject( OIS::OISKeyboard, true ));
+		mouse = static_cast<OIS::Mouse*>( inputManager->createInputObject( OIS::OISMouse, true ) );
+		keyboard = static_cast<OIS::Keyboard*>( inputManager->createInputObject( OIS::OISKeyboard, true ) );
 
 		const OIS::MouseState &mouseState = mouse->getMouseState();
 		mouseState.width = mainWindow->getWidth();
 		mouseState.height = mainWindow->getHeight();
 
+
 		// Load GUI
 		gui = new SimGUI( *this );
 		gui->Load();
 		
+		// Temporary, used for testing TerrainLoader
+		// Load some terrain:
+		GeoCoord topLeft = GeoCoord( 63.631625, 26.967101, COORDSYS_DDDDDDDD );
+		GeoCoord currentPoint;
+
+		TerrainLoader terrainLoader( *this );
+		terrainLoader.SetReferencePoint( topLeft );
+
+		std::stringstream ss;
+		Ogre::SceneNode* lNode = rootNode->createChildSceneNode();
+
+		double latitudeStep = topLeft.Offset( GeoCoord( -1000.0, 0.0, COORDSYS_METERS ) ).latitude - topLeft.latitude;
+		double longitudeStep = topLeft.Offset( GeoCoord( 0.0, 1000.0, COORDSYS_METERS ) ).longitude - topLeft.longitude;
+
+		#define GRID_Y_SIZE 3
+		#define GRID_X_SIZE 3
+
+		for( int y=0; y < GRID_Y_SIZE; ++y )
+		{
+			currentPoint = topLeft.Offset( GeoCoord( y*latitudeStep, 0.0, COORDSYS_DDDDDDDD ) );
+			currentPoint = currentPoint.Offset( GeoCoord( 0.0, longitudeStep/2.0, COORDSYS_DDDDDDDD ) );
+		
+			for( int x=0; x < GRID_X_SIZE; ++x )
+			{
+				std::cout << "\rLoading area...\t";
+				std::cout << (y*GRID_X_SIZE + x) / (GRID_Y_SIZE*GRID_X_SIZE) * 100.0 << "%";
+
+				ss.clear();
+				ss << x << "_" << y;
+				std::string id = ss.str();
+
+				terrainLoader.LoadArea( currentPoint, latitudeStep/2.0, longitudeStep/2.0, 6, "TestArea"+id );
+
+				// Create isntance of the mesh
+				Ogre::String lNameOfTheMesh = "MeshTestArea"+id;
+				Ogre::Entity* lEntity = sceneManager->createEntity( lNameOfTheMesh );
+
+				Ogre::SceneNode* tmpNode = lNode->createChildSceneNode();
+				tmpNode->attachObject( lEntity );
+				//lEntity->setCastShadows( true );
+
+				currentPoint = currentPoint.Offset( GeoCoord( 0.0, longitudeStep, COORDSYS_DDDDDDDD ) );
+			}
+		}
+		std::cout << "\nFinished!\n";
+		lNode->translate( 0, -100.0, 0.0f );
+
 		// Create Light
 		Ogre::SceneNode* lLightSceneNode = NULL;
 		{
@@ -172,6 +222,7 @@ void SimApp::Init()
 		Ogre::ColourValue lAmbientColour( 0.2f, 0.2f, 0.2f, 1.0f );
 		sceneManager->setAmbientLight( lAmbientColour );
 		
+
 		Ogre::WindowEventUtilities::addWindowEventListener( mainWindow, this );
 
 		// Clear event times
@@ -197,8 +248,8 @@ void SimApp::Update()
 {
 	if( !mainWindow->isClosed() )
 	{
+		camera->Update( 0.1 );
 		gui->Update();
-		OIS::MouseState mstate = mouse->getMouseState();
 		mainWindow->update( false );
 		mainWindow->swapBuffers( true );
 		ogreRoot->renderOneFrame();
@@ -228,13 +279,25 @@ void SimApp::Close()
 
 void SimApp::Unload()
 {
-	gui->Unload();
+	if( gui )
+	{
+		gui->Unload();
+		gui = nullptr;
+	}
+
+	if( curl )
+	{
+		curl_easy_cleanup( curl );
+	}
 }
+
 
 
 void SimApp::windowMoved( Ogre::RenderWindow *win )
 {
 }
+
+
 
 void SimApp::windowResized( Ogre::RenderWindow *win )
 {
@@ -245,14 +308,20 @@ void SimApp::windowResized( Ogre::RenderWindow *win )
 	}
 }
 
+
+
 bool SimApp::windowClosing( Ogre::RenderWindow *win )
 {
 	return true;
 }
 
+
+
 void SimApp::windowClosed( Ogre::RenderWindow *win )
 {
 }
+
+
 
 void SimApp::windowFocusChange( Ogre::RenderWindow *win )
 {

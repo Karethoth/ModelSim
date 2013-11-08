@@ -3,6 +3,7 @@
 #define _PREDEFS_HH_
 
 // Predefined classes:
+class TerrainLoader;
 class SimGUI;
 class SimApp;
 class SimState;

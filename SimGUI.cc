@@ -71,6 +71,7 @@ void SimGUI::Resize( int w, int h )
  */
 bool SimGUI::mouseMoved( const OIS::MouseEvent &arg )
 {
+	app.camera->mouseMoved( arg );
     MyGUI::InputManager::getInstance().injectMouseMove(arg.state.X.abs, arg.state.Y.abs, arg.state.Z.abs);
 	return true;
 }
@@ -89,12 +90,14 @@ bool SimGUI::mouseReleased( const OIS::MouseEvent &arg, OIS::MouseButtonID id )
 
 bool SimGUI::keyPressed( const OIS::KeyEvent &arg )
 {
+	app.camera->keyPressed( arg );
     MyGUI::InputManager::getInstance().injectKeyPress(MyGUI::KeyCode::Enum(arg.key), arg.text);
 	return true;
 }
  
 bool SimGUI::keyReleased( const OIS::KeyEvent &arg )
 {
+	app.camera->keyReleased( arg );
     MyGUI::InputManager::getInstance().injectKeyRelease(MyGUI::KeyCode::Enum(arg.key));
 	return true;
 }
